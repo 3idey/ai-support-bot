@@ -67,6 +67,12 @@ return [
 
     'timezone' => 'UTC',
 
+    // Providers 
+    'providers' => [
+        Illuminate\Filesystem\FilesystemServiceProvider::class,
+        App\Providers\AiServicesProvider::class,
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
