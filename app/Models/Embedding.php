@@ -14,7 +14,7 @@ class Embedding extends Model
     protected $casts = [
         'embedding' => 'array',
     ];
-    public function document_chunk()
+    public function documentChunk()
     {
         return $this->belongsTo(DocumentChunk::class, 'document_chunk_id');
     }

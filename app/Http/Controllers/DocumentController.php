@@ -12,7 +12,7 @@ class DocumentController extends Controller
     {
         $request->validate([
             'workspace_id' => 'required',
-            'file' => 'required|file|mimes:pdf,doc,docx|max:2048',
+            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:2048',
         ]);
 
         $file = $request->file('file');

@@ -17,6 +17,6 @@ class DocumentChunk extends Model
     }
     public function embedding()
     {
-        return $this->hasOne(Embedding::class, 'chunk_id');
+        return $this->hasOne(Embedding::class, 'document_chunk_id');
     }
 }

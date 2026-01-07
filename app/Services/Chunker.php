@@ -4,7 +4,7 @@ namespace App\Services;
 
 class Chunker
 {
-    public function split(string $text, int $maxLength = 800): array
+    public function chunk(string $text, int $maxLength = 800): array
     {
         $sentences = preg_split('/(?<=[.?!])\s+/', trim($text));
 

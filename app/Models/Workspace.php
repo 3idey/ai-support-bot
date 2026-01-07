@@ -11,6 +11,22 @@ class Workspace extends Model
         'slug',
         'public_key',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($workspace) {
+            if (empty($workspace->slug)) {
+                $workspace->slug = \Illuminate\Support\Str::slug($workspace->name);
+            }
+            if (empty($workspace->public_key)) {
+                $workspace->public_key = \Illuminate\Support\Str::random(32);
+            }
+        });
+    }
+
+
     public function users()
     {
         return $this->belongsToMany(User::class);
