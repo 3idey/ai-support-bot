@@ -50,4 +50,8 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Workspace::class);
     }
+    public function conversations()
+    {
+        return $this->hasMany(Conversation::class);
+    }
 }

@@ -6,5 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 
 class Document extends Model
 {
-    //
+    protected $fillable = [
+        'workspace_id',
+        'title',
+        'source_type',
+        'file_path',
+        'chunk_count',
+        'processed',
+    ];
+    public function workspace()
+    {
+        return $this->belongsTo(Workspace::class);
+    }
+
+    public function chunks()
+    {
+        return $this->hasMany(DocumentChunk::class);
+    }
 }
