@@ -13,6 +13,8 @@ class Document extends Model
         'file_path',
         'chunk_count',
         'processed',
+        'status',
+        'error_message',
     ];
     public function workspace()
     {

@@ -34,38 +34,54 @@ class ProcessDocument implements ShouldQueue
      */
     public function handle(): void
     {
-        $filePath = $this->document->file_path;
+        try {
+            $this->document->update(['status' => 'processing']);
 
-        $rawText = app('textExtractor')->extract(
-            Storage::path($filePath)
-        );
+            $filePath = $this->document->file_path;
 
-        $chunks = app('chunker')->chunk($rawText, 800);
-        $embeddingService = new EmbeddingService();
+            $rawText = app('textExtractor')->extract(
+                Storage::path($filePath)
+            );
 
-        $docChunks = [];
-        foreach ($chunks as $i => $chunk) {
-            $docChunks[] = DocumentChunk::create([
-                'document_id' => $this->document->id,
-                'content' => $chunk,
-                'chunk_index' => $i,
-            ]);
-        }
+            if (empty(trim($rawText))) {
+                throw new \Exception("No text could be extracted from the file.");
+            }
 
-        if (!empty($chunks)) {
-            $vectors = $embeddingService->embed($chunks);
+            $chunks = app('chunker')->chunk($rawText, 800);
+            $embeddingService = new EmbeddingService();
 
-            foreach ($docChunks as $index => $docChunk) {
-                Embedding::create([
-                    'document_chunk_id' => $docChunk->id,
-                    'embedding' => $vectors[$index],
+            $docChunks = [];
+            foreach ($chunks as $i => $chunk) {
+                $docChunks[] = DocumentChunk::create([
+                    'document_id' => $this->document->id,
+                    'content' => $chunk,
+                    'chunk_index' => $i,
                 ]);
             }
-        }
 
-        $this->document->update([
-            'chunk_count' => count($chunks),
-            'processed' => true,
-        ]);
+            if (!empty($chunks)) {
+                $vectors = $embeddingService->embed($chunks);
+
+                foreach ($docChunks as $index => $docChunk) {
+                    Embedding::create([
+                        'document_chunk_id' => $docChunk->id,
+                        'embedding' => $vectors[$index],
+                    ]);
+                }
+            }
+
+            $this->document->update([
+                'chunk_count' => count($chunks),
+                'processed' => true,
+                'status' => 'completed',
+            ]);
+        } catch (\Throwable $e) {
+            $this->document->update([
+                'status' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
+
+            throw $e; // Re-throw to ensure the job is marked as failed in the queue system
+        }
     }
 }
