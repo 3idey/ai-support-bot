@@ -83,6 +83,81 @@ class ChatController extends Controller
             'content' => $question,
         ]);
 
+        // HANDLE STREAMING RESPONSE
+        if ($request->boolean('stream')) {
+            return response()->stream(function () use ($messages, $conversation, $chunks, $context) {
+                // 1. send sources event
+                echo "event: sources\n";
+                echo "data: " . json_encode($chunks) . "\n\n";
+
+                // send conversation id event
+                echo "event: conversation_id\n";
+                echo "data: " . json_encode(['id' => $conversation->id]) . "\n\n";
+
+                ob_flush();
+                flush();
+
+                $fullAnswer = '';
+                $isError = false;
+
+                try {
+                    $stream = OpenAI::chat()->createStreamed([
+                        'model' => 'gpt-4o-mini',
+                        'messages' => $messages,
+                    ]);
+
+                    foreach ($stream as $response) {
+                        $text = $response->choices[0]->delta->content;
+                        if (strlen($text) > 0) {
+                            $fullAnswer .= $text;
+                            echo "data: " . json_encode(['content' => $text]) . "\n\n";
+                            ob_flush();
+                            flush();
+                        }
+                    }
+
+                } catch (\Exception $e) {
+                    $isError = true;
+                    if (app()->environment('local')) {
+                        // local fallback simulation
+                        $fallbackAnswer = "I'm sorry, I'm having trouble connecting to the AI service (Rate limit or connection issue). Here is what I found: \n\n" . $context;
+                        $fullAnswer = $fallbackAnswer;
+
+                        // simulate typing
+                        foreach (explode(' ', $fallbackAnswer) as $word) {
+                            echo "data: " . json_encode(['content' => $word . ' ']) . "\n\n";
+                            ob_flush();
+                            flush();
+                            usleep(50000);
+                        }
+                    } else {
+                        echo "event: error\n";
+                        echo "data: " . json_encode(['message' => 'AI Service Unavailable']) . "\n\n";
+                    }
+                }
+
+                if (!$isError || app()->environment('local')) {
+                    echo "data: [DONE]\n\n";
+                    ob_flush();
+                    flush();
+
+                    // Save Assistant Message
+                    $conversation->messages()->create([
+                        'role' => 'assistant',
+                        'content' => $fullAnswer,
+                        'sources' => $chunks,
+                    ]);
+                }
+
+            }, 200, [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache',
+                'Connection' => 'keep-alive',
+                'X-Accel-Buffering' => 'no',
+            ]);
+        }
+
+        // HANDLE NORMAL JSON RESPONSE
         try {
             // 6. Ask LLM with context AND history
             $response = OpenAI::chat()->create([
