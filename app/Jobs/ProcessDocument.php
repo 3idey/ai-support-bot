@@ -10,10 +10,15 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use App\Services\EmbeddingService;
+use App\Models\Embedding;
 
 class ProcessDocument implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+    public int $backoff = 60; // Wait 1 minute before retrying
 
     /**
      * Create a new job instance.
@@ -36,13 +41,26 @@ class ProcessDocument implements ShouldQueue
         );
 
         $chunks = app('chunker')->chunk($rawText, 800);
+        $embeddingService = new EmbeddingService();
 
+        $docChunks = [];
         foreach ($chunks as $i => $chunk) {
-            DocumentChunk::create([
+            $docChunks[] = DocumentChunk::create([
                 'document_id' => $this->document->id,
                 'content' => $chunk,
                 'chunk_index' => $i,
             ]);
+        }
+
+        if (!empty($chunks)) {
+            $vectors = $embeddingService->embed($chunks);
+
+            foreach ($docChunks as $index => $docChunk) {
+                Embedding::create([
+                    'document_chunk_id' => $docChunk->id,
+                    'embedding' => $vectors[$index],
+                ]);
+            }
         }
 
         $this->document->update([
