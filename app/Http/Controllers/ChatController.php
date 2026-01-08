@@ -13,52 +13,114 @@ class ChatController extends Controller
     {
         $request->validate([
             'question' => 'required|string',
+            'conversation_id' => 'nullable|exists:conversations,id',
+            'workspace_id' => 'required_without:conversation_id|exists:workspaces,id',
         ]);
+
+        $user = $request->user();
+
+        // 1. Resolve Conversation
+        if ($request->conversation_id) {
+            $conversation = \App\Models\Conversation::findOrFail($request->conversation_id);
+
+            // Security check: Ensure user owns this conversation
+            if ($conversation->user_id !== $user->id) {
+                abort(403, 'Unauthorized access to this conversation.');
+            }
+        } else {
+            $conversation = \App\Models\Conversation::create([
+                'user_id' => $user->id,
+                'workspace_id' => $request->workspace_id,
+            ]);
+        }
 
         $question = $request->question;
 
-        // 1. Embed question
+        // 2. Embed question
         $embeddingService = new EmbeddingService();
         $queryEmbedding = $embeddingService->embed($question);
 
-        // 2. Retrieve relevant chunks
+        // 3. Retrieve relevant chunks
         $retrieval = new RetrievalService();
         $chunks = $retrieval->getRelevantChunks($queryEmbedding);
 
-        // 3. Build context
+        // 4. Build context
         $context = collect($chunks)
             ->pluck('content')
             ->implode("\n\n");
 
+        // 5. Build Messages History
+        $messages = [
+            [
+                'role' => 'system',
+                'content' => "You are an AI support assistant. Use the following context to answer the user's question. If the answer is not in the context, say so.\n\nContext:\n" . $context,
+            ]
+        ];
+
+        // Fetch last 5 messages for history
+        $history = $conversation->messages()
+            ->latest()
+            ->take(5)
+            ->get()
+            ->reverse();
+
+        foreach ($history as $msg) {
+            $messages[] = [
+                'role' => $msg->role,
+                'content' => $msg->content,
+            ];
+        }
+
+        // Add current user question
+        $messages[] = [
+            'role' => 'user',
+            'content' => $question,
+        ];
+
+        // Save User Message to DB
+        $conversation->messages()->create([
+            'role' => 'user',
+            'content' => $question,
+        ]);
+
         try {
-            // 4. Ask LLM with context
+            // 6. Ask LLM with context AND history
             $response = OpenAI::chat()->create([
                 'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' =>
-                            "You are an AI support assistant. Use ONLY the following context:\n\n" .
-                            $context,
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $question,
-                    ],
-                ],
+                'messages' => $messages,
+            ]);
+
+            $answer = $response['choices'][0]['message']['content'];
+
+            // Save Assistant Message to DB
+            $conversation->messages()->create([
+                'role' => 'assistant',
+                'content' => $answer,
+                'sources' => $chunks,
             ]);
 
             return response()->json([
-                'answer' => $response['choices'][0]['message']['content'],
+                'answer' => $answer,
                 'sources' => $chunks,
+                'conversation_id' => $conversation->id,
             ]);
         } catch (\Exception $e) {
             if (app()->environment('local')) {
+                // Local Fallback
+                $fallbackAnswer = "I'm sorry, I'm having trouble connecting to the AI service. Here is what I found in the documents: \n\n" . $context;
+
+                $conversation->messages()->create([
+                    'role' => 'assistant',
+                    'content' => $fallbackAnswer,
+                    'sources' => $chunks,
+                ]);
+
                 return response()->json([
-                    'answer' => "I'm sorry, I'm having trouble connecting to the AI service (Rate limit or connection issue). Here is what I found in the documents: \n\n" . $context,
+                    'answer' => $fallbackAnswer,
                     'sources' => $chunks,
                     'error' => $e->getMessage(),
-                    'debug' => 'Local fallback triggered'
+                    'debug' => 'Local fallback triggered',
+                    'conversation_id' => $conversation->id,
                 ]);
             }
             throw $e;
