@@ -1,59 +1,112 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AI Support Bot
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A powerful, scalable, and memory-aware AI Support Assistant built with Laravel 12.
 
-## About Laravel
+## Features 
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+-   **Multi-Format Ingestion**: Process PDF, DOCX, and TXT files with automatic text extraction.
+-   **Vector Search**: Smart retrieval using OpenAI embeddings and cosine similarity.
+-   **Conversation Memory**: Remembers context from previous messages for natural follow-up questions.
+-   **Streaming Responses**: Real-time typewriter effect using Server-Sent Events (SSE).
+-   **Scalable**: Memory-optimized search algorithm (O(1) memory usage) for large datasets.
+-   **Secure**: API endpoints protected by Laravel Sanctum authentication and rate limiting.
+-   **Robust**: Resilient background job processing with detailed error tracking and status updates.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Tech Stack 
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+-   **Framework**: Laravel 12 (PHP 8.4)
+-   **AI Model**: GPT-4o-mini
+-   **Embeddings**: text-embedding-3-small
+-   **Database**: SQLite (Default) / MySQL / PostgreSQL compatible
+-   **Queue System**: Database / Redis
 
-## Learning Laravel
+## Installation 
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+1.  **Clone & Install**
+    ```bash
+    git clone https://github.com/oh3idx/ai-support-bot.git
+    cd ai-support-bot
+    composer install
+    ```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+2.  **Environment Setup**
+    ```bash
+    cp .env.example .env
+    php artisan key:generate
+    ```
+    Configure your `.env` file:
+    ```env
+    OPENAI_API_KEY=sk-...
+    DB_CONNECTION=sqlite # or mysql
+    ```
 
-## Laravel Sponsors
+3.  **Database & Migration**
+    ```bash
+    touch database/database.sqlite # If using SQLite
+    php artisan migrate
+    ```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+4.  **Start Services**
+    Start the dev server:
+    ```bash
+    php artisan serve
+    ```
+    Start the queue worker (for document processing):
+    ```bash
+    php artisan queue:work
+    ```
 
-### Premium Partners
+## API Documentation 
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Authentication
+All API endpoints require a Bearer token.
+```bash
+Authorization: Bearer <your-token>
+```
+*Note: You can generate a token using `App\Models\User::first()->createToken('dev')->plainTextToken` in tinker.*
 
-## Contributing
+### 1. Upload Document
+Upload a document to be indexed.
+**POST** `/documents/upload`
+```bash
+curl -X POST http://localhost:8000/documents/upload \
+  -H "Accept: application/json" \
+  -F "file=@/path/to/manual.pdf" \
+  -F "workspace_id=1"
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 2. Chat (JSON)
+Standard Request-Response chat.
+**POST** `/api/ask`
+```bash
+curl -X POST http://localhost:8000/api/ask \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How do I reset my password?",
+    "workspace_id": 1
+  }'
+```
 
-## Code of Conduct
+### 3. Chat (Streaming + Memory)
+Enable streaming and pass `conversation_id` for context.
+**POST** `/api/ask`
+```bash
+curl -N -X POST http://localhost:8000/api/ask \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Tell me more about that.",
+    "conversation_id": 1,
+    "stream": true
+  }'
+```
+**Response Stream Events:**
+- `event: sources` (Related document chunks)
+- `event: conversation_id` (ID for follow-ups)
+- `data: {"content": "..."}` (Answer tokens)
+- `data: [DONE]`
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## License 
 
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT License.
