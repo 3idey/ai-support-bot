@@ -4,11 +4,12 @@ A powerful, scalable, and memory-aware AI Support Assistant built with Laravel 1
 
 ## Features 
 
+-   **Aggressive Scalability**: Powered by Redis Queues and Batch Processing for handling massive document ingestion loads.
+-   **Parallel Processing**: Documents are chunked and embedded in parallel batches, utilizing maximum available workers.
 -   **Multi-Format Ingestion**: Process PDF, DOCX, and TXT files with automatic text extraction.
 -   **Vector Search**: Smart retrieval using OpenAI embeddings and cosine similarity.
 -   **Conversation Memory**: Remembers context from previous messages for natural follow-up questions.
 -   **Streaming Responses**: Real-time typewriter effect using Server-Sent Events (SSE).
--   **Scalable**: Memory-optimized search algorithm (O(1) memory usage) for large datasets.
 -   **Secure**: API endpoints protected by Laravel Sanctum authentication and rate limiting.
 -   **Robust**: Resilient background job processing with detailed error tracking and status updates.
 
@@ -17,14 +18,23 @@ A powerful, scalable, and memory-aware AI Support Assistant built with Laravel 1
 -   **Framework**: Laravel 12 (PHP 8.4)
 -   **AI Model**: GPT-4o-mini
 -   **Embeddings**: text-embedding-3-small
--   **Database**: SQLite (Default) / MySQL / PostgreSQL compatible
--   **Queue System**: Database / Redis
+-   **Database**: MariaDB / MySQL (Recommended for production)
+-   **Cache & Queue**: Redis (Required for batch processing)
+
+## Scalability Architecture
+
+This application uses an aggressive scalability architecture:
+- **Chunking**: Large documents are split into manageable chunks (800 chars).
+- **Batch Processing**: Chunks are processed in parallel batches using `Bus::batch` and Redis.
+- **Idempotency**: Jobs are designed to be idempotent to handle retries gracefully.
+- **Cleanup**: Automatic cleanup of old embedding data prevents vector drift.
+- **Stateless API**: Authentication via Sanctum allows for horizontal scaling.
 
 ## Installation 
 
 1.  **Clone & Install**
     ```bash
-    git clone https://github.com/oh3idx/ai-support-bot.git
+    git clone https://github.com/3idey/ai-support-bot.git
     cd ai-support-bot
     composer install
     ```
@@ -37,7 +47,9 @@ A powerful, scalable, and memory-aware AI Support Assistant built with Laravel 1
     Configure your `.env` file:
     ```env
     OPENAI_API_KEY=sk-...
-    DB_CONNECTION=sqlite # or mysql
+    DB_CONNECTION=mariadb
+    QUEUE_CONNECTION=redis
+    CACHE_DRIVER=redis
     ```
 
 3.  **Database & Migration**
@@ -47,13 +59,19 @@ A powerful, scalable, and memory-aware AI Support Assistant built with Laravel 1
     ```
 
 4.  **Start Services**
+    Ensure Redis is running:
+    ```bash
+    redis-server
+    ```
+
+    Start the queue worker (Critical for batch processing):
+    ```bash
+    php artisan queue:work
+    ```
+
     Start the dev server:
     ```bash
     php artisan serve
-    ```
-    Start the queue worker (for document processing):
-    ```bash
-    php artisan queue:work
     ```
 
 ## API Documentation 
