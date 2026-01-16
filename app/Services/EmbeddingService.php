@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use OpenAI\Laravel\Facades\OpenAI;
+use Illuminate\Support\Facades\Cache;
 
 class EmbeddingService
 {
@@ -13,6 +14,13 @@ class EmbeddingService
      * @return array
      */
     public function embed(string|array $text): array
+    {
+        $key = 'embedding:' . sha1($text);
+
+        return Cache::remember($key, now()->addDays(7), fn() => $this->generateEmbedding($text));
+    }
+
+    private function generateEmbedding(string|array $text): array
     {
         try {
             $response = OpenAI::embeddings()->create([

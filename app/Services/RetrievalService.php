@@ -1,15 +1,28 @@
 <?php
+
 namespace App\Services;
 
-use App\Models\Embedding;
 use App\Helpers\VectorHelper;
+use App\Models\Embedding;
+use Illuminate\Support\Facades\Cache;
 
 class RetrievalService
 {
     public function getRelevantChunks(array $queryEmbedding, int $limit = 5)
     {
-        $scores = [];
+        $key = 'chunks:'.sha1(json_encode($queryEmbedding));
 
+        return Cache::remember($key, now()->addMinutes(10), function () use ($queryEmbedding, $limit) {
+            return $this->queryDatabase($queryEmbedding, $limit);
+        });
+    }
+
+    /**
+     * Query database for relevant chunks
+     */
+    private function queryDatabase(array $queryEmbedding, int $limit): array
+    {
+        $scores = [];
 
         foreach (Embedding::query()->select('id', 'document_chunk_id', 'embedding')->cursor() as $record) {
             $score = VectorHelper::cosineSimilarity(
@@ -25,7 +38,7 @@ class RetrievalService
         }
 
         // sort by score descending
-        usort($scores, fn($a, $b) => $b['score'] <=> $a['score']);
+        usort($scores, fn ($a, $b) => $b['score'] <=> $a['score']);
 
         // take top results
         $topResults = array_slice($scores, 0, $limit);
