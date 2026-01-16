@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Document extends Model
 {
@@ -16,12 +18,13 @@ class Document extends Model
         'status',
         'error_message',
     ];
-    public function workspace()
+
+    public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
     }
 
-    public function chunks()
+    public function chunks(): HasMany
     {
         return $this->hasMany(DocumentChunk::class);
     }

@@ -11,11 +11,13 @@ class DocumentChunk extends Model
         'chunk_index',
         'content',
     ];
-    public function document()
+
+    public function document(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Document::class);
     }
-    public function embedding()
+
+    public function embedding(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Embedding::class, 'document_chunk_id');
     }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Embedding extends Model
 {
@@ -11,10 +12,12 @@ class Embedding extends Model
         'embedding',
         'similarity',
     ];
+
     protected $casts = [
         'embedding' => 'array',
     ];
-    public function documentChunk()
+
+    public function documentChunk(): BelongsTo
     {
         return $this->belongsTo(DocumentChunk::class, 'document_chunk_id');
     }

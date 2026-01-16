@@ -4,7 +4,7 @@ use App\Http\Controllers\ChatController;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/ask', [ChatController::class, 'ask'])->middleware(['auth:sanctum', 'throttle:10']);
+Route::post('/ask', [ChatController::class, 'ask'])->middleware(['auth:sanctum', 'throttle:api']);
 
 // Health check with Redis verification
 Route::get('/health', function () {
