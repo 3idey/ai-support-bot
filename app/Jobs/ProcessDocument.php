@@ -4,12 +4,12 @@ namespace App\Jobs;
 
 use App\Models\Document;
 use App\Models\DocumentChunk;
-use App\Models\Embedding;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Bus;
 
 class ProcessDocument implements ShouldQueue
 {
@@ -37,79 +37,94 @@ class ProcessDocument implements ShouldQueue
         try {
             $this->document->update(['status' => 'processing']);
 
+            // 1. Clean up existing data for idempotency
             \Illuminate\Support\Facades\DB::transaction(function () {
-                // Delete existing chunks and embeddings for this document to ensure idempotency
-                $existingChunkIds = DocumentChunk::where('document_id', $this->document->id)
-                    ->pluck('id');
-
-                if ($existingChunkIds->isNotEmpty()) {
-                    Embedding::whereIn('document_chunk_id', $existingChunkIds)->delete();
-                    DocumentChunk::where('document_id', $this->document->id)->delete();
-                }
-
-                $filePath = $this->document->file_path;
-                $rawText = app('textExtractor')->extract(
-                    \Illuminate\Support\Facades\Storage::path($filePath)
-                );
-
-                if (empty(trim($rawText))) {
-                    throw new \Exception('No text could be extracted from the file.');
-                }
-
-                $chunks = app('chunker')->chunk($rawText, 800);
-                $embeddingService = new \App\Services\EmbeddingService;
-
-                if (! empty($chunks)) {
-                    $now = now();
-                    $docChunksData = [];
-
-                    foreach ($chunks as $i => $chunk) {
-                        $docChunksData[] = [
-                            'document_id' => $this->document->id,
-                            'content' => $chunk,
-                            'chunk_index' => $i,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-
-                    // Batch insert chunks
-                    DocumentChunk::insert($docChunksData);
-
-                    // Fetch back to get IDs
-                    $docChunks = DocumentChunk::where('document_id', $this->document->id)
-                        ->orderBy('chunk_index')
-                        ->get();
-
-                    $vectors = $embeddingService->embed($chunks);
-
-                    $embeddingsData = [];
-                    foreach ($docChunks as $index => $docChunk) {
-                        $embeddingsData[] = [
-                            'document_chunk_id' => $docChunk->id,
-                            'embedding' => json_encode($vectors[$index]),
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-
-                    // Batch insert embeddings
-                    Embedding::insert($embeddingsData);
-                }
-
-                $this->document->update([
-                    'chunk_count' => count($chunks),
-                    'processed' => true,
-                    'status' => 'completed',
-                ]);
+                DocumentChunk::where('document_id', $this->document->id)->delete();
             });
+
+            // 2. Extract Text
+            $filePath = $this->document->file_path;
+            $rawText = app('textExtractor')->extract(
+                \Illuminate\Support\Facades\Storage::path($filePath)
+            );
+
+            if (empty(trim($rawText))) {
+                throw new \Exception('No text could be extracted from the file.');
+            }
+
+            // 3. Chunk Text
+            $chunks = app('chunker')->chunk($rawText, 800);
+
+            if (empty($chunks)) {
+                $this->document->update(['status' => 'completed', 'processed' => true, 'chunk_count' => 0]);
+
+                return;
+            }
+
+            // 4. Save Chunks to DB
+            $now = now();
+            $docChunksData = [];
+            foreach ($chunks as $i => $chunk) {
+                $docChunksData[] = [
+                    'document_id' => $this->document->id,
+                    'content' => $chunk,
+                    'chunk_index' => $i,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            // We use a transaction here to ensure all chunks are saved before we try to process them
+            \Illuminate\Support\Facades\DB::transaction(function () use ($docChunksData) {
+                foreach (array_chunk($docChunksData, 100) as $batch) {
+                    DocumentChunk::insert($batch);
+                }
+            });
+
+            // 5. Retrieve Chunk IDs to dispatch jobs
+            $chunkIds = DocumentChunk::where('document_id', $this->document->id)
+                ->orderBy('chunk_index')
+                ->pluck('id');
+
+            // 6. Create Batch Jobs (e.g., 20 chunks per job)
+            $jobs = [];
+            foreach ($chunkIds->chunk(20) as $chunkBatch) {
+                $jobs[] = new EmbedDocumentChunks($chunkBatch->all());
+            }
+
+            $document = $this->document;
+
+            // 7. Dispatch Batch
+            Bus::batch($jobs)
+                ->name('Process Document: '.$document->id)
+                ->allowFailures()
+                ->then(function (\Illuminate\Bus\Batch $batch) use ($document, $chunks) {
+                    // Update Document on success
+                    $document->update([
+                        'status' => 'completed',
+                        'processed' => true,
+                        'chunk_count' => count($chunks),
+                    ]);
+                })
+                ->catch(function (\Illuminate\Bus\Batch $batch, \Throwable $e) use ($document) {
+                    // Update Document on failure
+                    $document->update([
+                        'status' => 'failed',
+                        'error_message' => 'Batch failed: '.$e->getMessage(),
+                    ]);
+                })
+                ->finally(function (\Illuminate\Bus\Batch $batch) {
+                    // Optional cleanup
+                })
+                ->dispatch();
+
         } catch (\Throwable $e) {
             $this->document->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
             ]);
 
-            throw $e; // Re-throw to ensure the job is marked as failed in the queue system
+            throw $e;
         }
     }
 }
