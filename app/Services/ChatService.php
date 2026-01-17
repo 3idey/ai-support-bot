@@ -22,7 +22,7 @@ class ChatService
         $this->saveUserMessage($conversation, $question);
 
         $queryEmbedding = $this->embeddingService->embed($question);
-        $chunks = $this->retrievalService->getRelevantChunks($queryEmbedding);
+        $chunks = $this->retrievalService->getRelevantChunks($queryEmbedding, 5, $conversation->workspace_id);
         $context = $this->buildContext($chunks);
         $messages = $this->buildMessages($conversation, $context, $question);
 

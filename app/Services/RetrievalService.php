@@ -3,31 +3,46 @@
 namespace App\Services;
 
 use App\Helpers\VectorHelper;
-use App\Models\Embedding;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class RetrievalService
 {
-    public function getRelevantChunks(array $queryEmbedding, int $limit = 5)
+    public function getRelevantChunks(array $queryEmbedding, int $limit = 5, ?int $workspaceId = null)
     {
-        $key = 'chunks:'.sha1(json_encode($queryEmbedding));
+        $key = 'chunks:' . sha1(json_encode($queryEmbedding) . $workspaceId);
 
-        return Cache::remember($key, now()->addMinutes(10), function () use ($queryEmbedding, $limit) {
-            return $this->queryDatabase($queryEmbedding, $limit);
+        return Cache::remember($key, now()->addMinutes(10), function () use ($queryEmbedding, $limit, $workspaceId) {
+            return $this->queryDatabase($queryEmbedding, $limit, $workspaceId);
         });
     }
 
     /**
      * Query database for relevant chunks
      */
-    private function queryDatabase(array $queryEmbedding, int $limit): array
+    private function queryDatabase(array $queryEmbedding, int $limit, ?int $workspaceId): array
     {
         $scores = [];
 
-        foreach (Embedding::query()->select('id', 'document_chunk_id', 'embedding')->cursor() as $record) {
+        $query = DB::table('embeddings')
+            ->select('embeddings.id', 'embeddings.document_chunk_id', 'embeddings.embedding');
+
+        if ($workspaceId) {
+            $query->join('document_chunks', 'embeddings.document_chunk_id', '=', 'document_chunks.id')
+                ->join('documents', 'document_chunks.document_id', '=', 'documents.id')
+                ->where('documents.workspace_id', $workspaceId);
+        }
+
+        foreach ($query->cursor() as $record) {
+            $embedding = json_decode($record->embedding, true);
+
+            if (!is_array($embedding)) {
+                continue;
+            }
+
             $score = VectorHelper::cosineSimilarity(
                 $queryEmbedding,
-                $record->embedding
+                $embedding
             );
 
             // keep track of score and chunk ID
@@ -38,7 +53,7 @@ class RetrievalService
         }
 
         // sort by score descending
-        usort($scores, fn ($a, $b) => $b['score'] <=> $a['score']);
+        usort($scores, fn($a, $b) => $b['score'] <=> $a['score']);
 
         // take top results
         $topResults = array_slice($scores, 0, $limit);
