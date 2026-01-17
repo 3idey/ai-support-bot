@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Requests\UploadDocumentRequest;
 use App\Services\DocumentService;
 
 class DocumentController extends Controller
@@ -11,16 +11,11 @@ class DocumentController extends Controller
     {
     }
 
-    public function store(Request $request)
+    public function store(UploadDocumentRequest $request)
     {
-        $request->validate([
-            'workspace_id' => 'required',
-            'file' => 'required|file|mimes:pdf,doc,docx,txt|max:2048',
-        ]);
-
         $document = $this->documentService->upload(
             $request->file('file'),
-            $request->workspace_id
+            $request->validated('workspace_id')
         );
 
         return response()->json([
