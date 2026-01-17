@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Document;
-use App\Jobs\ProcessDocument;
+use App\Services\DocumentService;
 
 class DocumentController extends Controller
 {
+    public function __construct(protected DocumentService $documentService)
+    {
+    }
+
     public function store(Request $request)
     {
         $request->validate([
@@ -15,18 +18,10 @@ class DocumentController extends Controller
             'file' => 'required|file|mimes:pdf,doc,docx,txt|max:2048',
         ]);
 
-        $file = $request->file('file');
-        $path = $file->store("workspace-docs/{$request->workspace_id}");
-
-        $document = Document::create([
-            'workspace_id' => $request->workspace_id,
-            'title' => $file->getClientOriginalName(),
-            'source_type' => 'file',
-            'file_path' => $path,
-            'processed' => false,
-        ]);
-        // queue stuff to process document 
-        dispatch(new ProcessDocument($document));
+        $document = $this->documentService->upload(
+            $request->file('file'),
+            $request->workspace_id
+        );
 
         return response()->json([
             'message' => 'Document uploaded successfully — processing started...',
