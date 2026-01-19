@@ -5,6 +5,7 @@ use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\QuotaController;
+use App\Http\Controllers\VectorController;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 
@@ -48,6 +49,14 @@ Route::middleware(['auth:sanctum'])->prefix('quota')->group(function () {
     Route::post('/track', [QuotaController::class, 'track']);
     Route::get('/documents/{workspaceId}', [QuotaController::class, 'documentsQuota']);
     Route::post('/documents/validate-size', [QuotaController::class, 'validateDocumentSize']);
+});
+
+// Vector database management endpoints
+Route::middleware(['auth:sanctum'])->prefix('vectors')->group(function () {
+    Route::get('/status', [VectorController::class, 'status']);
+    Route::get('/recommendations', [VectorController::class, 'recommendations']);
+    Route::post('/migrate', [VectorController::class, 'migrate']);
+    Route::post('/benchmark', [VectorController::class, 'benchmark']);
 });
 
 // Health check with Redis verification
