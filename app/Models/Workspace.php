@@ -33,7 +33,7 @@ class Workspace extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class);
+        return $this->belongsToMany(User::class, 'workspace_user');
     }
 
     public function documents(): HasMany

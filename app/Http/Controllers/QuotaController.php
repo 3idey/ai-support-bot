@@ -159,8 +159,8 @@ class QuotaController extends Controller
             'valid' => $isValid,
             'size_kb' => $sizeKb,
             'max_size_kb' => $maxSize,
-            'message' => $isValid 
-                ? 'Document size is within limits' 
+            'message' => $isValid
+                ? 'Document size is within limits'
                 : "Document size exceeds the maximum allowed size of {$maxSize} KB",
         ], $isValid ? 200 : 422);
     }
