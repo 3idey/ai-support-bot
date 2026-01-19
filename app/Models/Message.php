@@ -12,6 +12,7 @@ class Message extends Model
         'sources',
         'content',
         'role',
+        'tokens',
     ];
 
     protected $casts = [
